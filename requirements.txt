@@ -1,0 +1,6 @@
+openai
+python-dotenv
+reportlab
+fpdf
+python-telegram-bot
+python-docx
