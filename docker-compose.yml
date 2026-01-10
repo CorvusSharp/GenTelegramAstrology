@@ -1,0 +1,11 @@
+services:
+  astro-bot:
+    build: .
+    container_name: astrolog_bot
+    restart: unless-stopped
+    # Загружаем переменные окружения из .env файла
+    env_file:
+      - .env
+    # Монтируем папку fonts, чтобы бот видел файлы шрифтов (times.ttf и т.д.)
+    volumes:
+      - ./fonts:/app/fonts
