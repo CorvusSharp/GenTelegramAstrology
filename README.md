@@ -25,7 +25,6 @@ sudo apt install python3-venv python3-pip git -y
 ```bash
 cd /opt
 sudo git clone https://github.com/CorvusSharp/GenTelegramAstrology.git astrolog_bot
-# Или ваша ссылка на репозиторий
 sudo chown -R $USER:$USER /opt/astrolog_bot
 cd /opt/astrolog_bot
 ```
