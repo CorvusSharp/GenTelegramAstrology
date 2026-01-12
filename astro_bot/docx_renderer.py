@@ -62,7 +62,7 @@ class DOCXReportGenerator:
         if 'Heading 1' in styles:
             h1 = styles['Heading 1']
             h1.font.name = 'Times New Roman'
-            h1.font.size = Pt(16)  # Reduced from 18 to 16
+            h1.font.size = Pt(14)  # Reduced from 16 to 14
             h1.font.color.rgb = RGBColor(40, 53, 147) # Indigo
             h1.paragraph_format.space_before = Pt(20)
             h1.paragraph_format.space_after = Pt(10)
@@ -72,7 +72,7 @@ class DOCXReportGenerator:
         if 'Heading 2' in styles:
             h2 = styles['Heading 2']
             h2.font.name = 'Times New Roman'
-            h2.font.size = Pt(15)  # Increased from 14 to 15
+            h2.font.size = Pt(13)  # Reduced from 15 to 13
             h2.font.color.rgb = RGBColor(0, 0, 0)
             h2.paragraph_format.space_before = Pt(10)
             h2.paragraph_format.space_after = Pt(6)
@@ -81,7 +81,7 @@ class DOCXReportGenerator:
         if 'Normal' in styles:
             normal = styles['Normal']
             normal.font.name = 'Times New Roman'
-            normal.font.size = Pt(14)  # Kept at 14
+            normal.font.size = Pt(12)  # Reduced from 14 to 12
             normal.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
             normal.paragraph_format.space_after = Pt(10)
         
@@ -89,7 +89,7 @@ class DOCXReportGenerator:
         if 'List Bullet' in styles:
             lb = styles['List Bullet']
             lb.font.name = 'Times New Roman'
-            lb.font.size = Pt(14)
+            lb.font.size = Pt(12)  # Reduced from 14 to 12
 
         # Небольшой верхний отступ на титульной, чтобы визуально соответствовать PDF
         # (баннер/шапка не должны прилипать к самому верху страницы).
@@ -98,14 +98,14 @@ class DOCXReportGenerator:
         title = doc.add_paragraph()
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         r = title.add_run("АСТРОЛОГИЧЕСКИЙ РАЗБОР СОВМЕСТИМОСТИ")
-        r.font.size = Pt(18)
+        r.font.size = Pt(16)  # Reduced from 18 to 16
         r.bold = True
         r.font.color.rgb = RGBColor(26, 35, 126)
 
         subtitle = doc.add_paragraph()
         subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
         r2 = subtitle.add_run("Персональные данные скрыты")
-        r2.font.size = Pt(13)
+        r2.font.size = Pt(11)  # Reduced from 13 to 11
         r2.italic = True
 
         doc.add_paragraph("")

@@ -4,7 +4,7 @@ import asyncio
 import threading
 from collections.abc import Coroutine
 from llm_client import LLMService
-from prompts import MAIN_PERSONA, BLOCK_PROMPTS, VERIFICATION_PROMPT, STYLE_PROMPT, CONSISTENCY_CHECK_PROMPT, FINAL_LAYOUT_PROMPT, FULL_REPORT_PROMPT
+from prompts import MAIN_PERSONA, BLOCK_PROMPTS, VERIFICATION_PROMPT, STYLE_PROMPT, CONSISTENCY_CHECK_PROMPT, FINAL_LAYOUT_PROMPT, FULL_REPORT_PROMPT, REFINE_REPORT_PROMPT
 
 class AstroFlowOrchestrator:
     def __init__(self):
@@ -67,6 +67,20 @@ class AstroFlowOrchestrator:
         # Возвращаем результат без списка ошибок, так как верификация теперь внедрена в промпт
         return full_text, []
 
+    def refine_report(self, current_report: str, user_feedback: str) -> str:
+        """Перегенерация/улучшение текста отчета на основе обратной связи пользователя."""
+        print(f"--- REFINING REPORT WITH FEEDBACK: {user_feedback[:50]}... ---")
+        
+        prompt = REFINE_REPORT_PROMPT.format(
+            current_report=current_report,
+            user_feedback=user_feedback
+        )
+        
+        refined_text = self.llm.run_prompt(
+            system_prompt="Ты — профессиональный астролог-редактор. Следуй инструкциям по доработке текста.",
+            user_prompt=prompt
+        )
+        return str(refined_text)
 
     def layout_report_astromarkup(self, client_data_json: Any, report_text: str, issues: list[dict[str, Any]] | None = None) -> str:
         """Финальная разметка для рендера в DOCX/PDF через простой текстовый формат AstroMarkup."""

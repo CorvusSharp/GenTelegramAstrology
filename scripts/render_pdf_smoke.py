@@ -11,7 +11,7 @@ from astro_bot.pdf_renderer import PDFReportGenerator
 
 def main() -> None:
     out = os.path.abspath("smoke_report.pdf")
-    gen = PDFReportGenerator(out)
+    gen = PDFRcceportGenerator(out)
 
     # Минимальный фрагмент, чтобы проверить:
     # 1) титульную страницу с image.png

@@ -100,8 +100,8 @@ class PDFReportGenerator:
             name='ReportTitle',
             parent=self.styles['Title'],
             fontName=(self.font_name + '-Bold') if (self.font_name == 'TimesNewRoman' and 'TimesNewRoman-Bold' in pdfmetrics.getRegisteredFontNames()) else self.font_name,
-            fontSize=24,
-            leading=32,
+            fontSize=22, # Reduced from 24 to 22
+            leading=30,
             alignment=TA_CENTER,
             spaceAfter=50,
             textColor=colors.HexColor('#1a237e') # Глубокий синий
@@ -111,8 +111,8 @@ class PDFReportGenerator:
         self.styles.add(ParagraphStyle(
             name='ReportSubtitle',
             parent=self.styles['Normal'],
-            fontName=self.font_name,
-            fontSize=18,
+            fontName=(self.font_name + '-Bold') if (self.font_name == 'TimesNewRoman' and 'TimesNewRoman-Bold' in pdfmetrics.getRegisteredFontNames()) else self.font_name,
+            fontSize=16,
             leading=24,
             alignment=TA_CENTER,
             spaceAfter=100,
@@ -124,8 +124,8 @@ class PDFReportGenerator:
             name='BlockHeader',
             parent=self.styles['Heading1'],
             fontName=(self.font_name + '-Bold') if (self.font_name == 'TimesNewRoman' and 'TimesNewRoman-Bold' in pdfmetrics.getRegisteredFontNames()) else self.font_name,
-            fontSize=16,  # Keep 16 or adjust to user needs. User asked to "decrease by 2pt". If confusing, stick to hierarchy. Let's try 16 as base.
-            leading=20,
+            fontSize=14,  # Reduced from 16 to 14
+            leading=18,
             alignment=TA_LEFT,
             spaceBefore=20,
             spaceAfter=15,
@@ -142,8 +142,8 @@ class PDFReportGenerator:
             name='SubHeader',
             parent=self.styles['Normal'],
             fontName=(self.font_name + '-Bold') if (self.font_name == 'TimesNewRoman' and 'TimesNewRoman-Bold' in pdfmetrics.getRegisteredFontNames()) else self.font_name,
-            fontSize=15,  # Increased from 12 to match/exceed body text
-            leading=18,
+            fontSize=13,  # Reduced from 15 to 13
+            leading=16,
             alignment=TA_LEFT,
             spaceBefore=8,
             spaceAfter=6,
@@ -169,8 +169,8 @@ class PDFReportGenerator:
             name='BodyTextCustom',
             parent=self.styles['Normal'],
             fontName=self.font_name,
-            fontSize=14,  # Adjusted to 14 to maintain hierarchy with 16pt headers
-            leading=18,
+            fontSize=12,  # Reduced from 14 to 12
+            leading=16,
             alignment=TA_JUSTIFY,
             spaceAfter=10
         ))
@@ -191,8 +191,8 @@ class PDFReportGenerator:
             name='PlanetLine',
             parent=self.styles['BodyTextCustom'],
             fontName=self.font_name,
-            fontSize=14,  # Matching body text
-            leading=18,
+            fontSize=12,  # Matching body text (12)
+            leading=16,
             alignment=TA_LEFT,
             spaceAfter=6
         ))

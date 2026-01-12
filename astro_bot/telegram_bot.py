@@ -3,8 +3,8 @@ import base64
 import logging
 import asyncio
 from typing import Any
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from dotenv import load_dotenv
 
 from flow_manager import AstroFlowOrchestrator
@@ -167,6 +167,19 @@ class AstroBot:
             )
             return
 
+        if status == "WAITING_FOR_FEEDBACK_TEXT":
+            # Пользователь нажал "Переписать" и прислал текст
+            await context.bot.send_message(chat_id=chat_id, text=f"🔧 Принято: '{raw_text}'. Переписываю отчет с учетом ваших пожеланий...")
+            await self._handle_feedback_refinement(chat_id, raw_text, update, context)
+            return
+        
+        if status == "WAITING_FOR_FEEDBACK_CHOICE":
+             # Пользователь не нажал кнопку, а написал текст. Считаем, что это правка.
+             await context.bot.send_message(chat_id=chat_id, text=f"🔧 Воспринимаю текст как правку: '{raw_text}'. Переписываю...")
+             self.pending_inputs[chat_id]["status"] = "WAITING_FOR_FEEDBACK_TEXT"
+             await self._handle_feedback_refinement(chat_id, raw_text, update, context)
+             return
+
         if not pending.get("image_data"):
             await context.bot.send_message(
                 chat_id=chat_id,
@@ -176,6 +189,104 @@ class AstroBot:
             return
 
         await self._finalize_with_text(chat_id=chat_id, raw_text=raw_text, update=update, context=context)
+
+    async def _handle_feedback_refinement(self, chat_id: int, feedback_text: str, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        pending = self.pending_inputs.get(chat_id)
+        if not pending or not pending.get("last_report_text"):
+            await context.bot.send_message(chat_id=chat_id, text="⚠️ Потерял контекст отчета. Пожалуйста, начните заново.")
+            return
+
+        current_report = pending["last_report_text"]
+        client_data = pending.get("client_data") or pending.get("image_data") # Fallback
+
+        try:
+            loop = asyncio.get_running_loop()
+            
+            # 1. Refine text
+            refined_text = await loop.run_in_executor(None, self.orchestrator.refine_report, current_report, feedback_text)
+            
+            # Update state with new text
+            pending["last_report_text"] = refined_text
+
+            # 2. Re-generate files (reuse logic)
+            await self._generate_and_send_files(chat_id, client_data, refined_text, update, context)
+
+        except Exception as e:
+            logging.error(f"Error refining report: {e}")
+            await context.bot.send_message(chat_id=chat_id, text=f"⚠️ Ошибка при обновлении отчета: {str(e)}")
+
+    async def _generate_and_send_files(self, chat_id: int, client_data: dict, report_text: str, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Helper to generate PDF/DOCX and send them, then wait for feedback."""
+        try:
+            loop = asyncio.get_running_loop()
+            
+            await context.bot.send_message(chat_id=chat_id, text="🧩 Применяю правки и обновляю верстку...")
+            
+            def layout_task():
+                # Issues list is empty for refined reports as we assume user manually overrode check
+                return self.orchestrator.layout_report_astromarkup(client_data, report_text, [])
+
+            astromarkup_text = await loop.run_in_executor(None, layout_task)
+
+            await context.bot.send_message(chat_id=chat_id, text="🎨 Пересобираю PDF...")
+            pdf_filename = f"Analys_{chat_id}_{update.message.message_id}.pdf"
+
+            def generate_pdf_task():
+                pdf_gen = PDFReportGenerator(pdf_filename)
+                return pdf_gen.create_pdf(client_data, astromarkup_text)
+
+            final_pdf_path = await loop.run_in_executor(None, generate_pdf_task)
+
+            # await context.bot.send_message(chat_id=chat_id, text="📝 Формирую DOCX версию...") # Reduce spam
+            docx_filename = f"Analys_{chat_id}_{update.message.message_id}.docx"
+
+            def generate_docx_task():
+                docx_gen = DOCXReportGenerator(docx_filename)
+                return docx_gen.create_docx(client_data, astromarkup_text)
+
+            final_docx_path = await loop.run_in_executor(None, generate_docx_task)
+
+            await context.bot.send_message(chat_id=chat_id, text="✨ Готово! Вот обновленная версия.")
+
+            name1 = client_data.get("client_1", {}).get("name", "Partner 1")
+            name2 = client_data.get("client_2", {}).get("name", "Partner 2")
+
+            await context.bot.send_document(
+                chat_id=chat_id,
+                document=open(final_pdf_path, 'rb'),
+                filename=f"Совместимость_{name1}_{name2}_v2.pdf",
+            )
+            await context.bot.send_document(
+                chat_id=chat_id,
+                document=open(final_docx_path, 'rb'),
+                filename=f"Совместимость_{name1}_{name2}_v2.docx",
+            )
+
+            if os.path.exists(final_pdf_path):
+                os.remove(final_pdf_path)
+            if os.path.exists(final_docx_path):
+                os.remove(final_docx_path)
+
+            # Set status to waiting for feedback choice
+            self.pending_inputs[chat_id]["status"] = "WAITING_FOR_FEEDBACK_CHOICE"
+            
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Всё ок, спасибо!", callback_data="feedback_no"),
+                    InlineKeyboardButton("✏️ Переписать / Внести правки", callback_data="feedback_yes"),
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await context.bot.send_message(
+                chat_id=chat_id, 
+                text="Отчёт готов! 👇\n\nХотите что-то исправить или оставить как есть?",
+                reply_markup=reply_markup
+            )
+
+        except Exception as e:
+            logging.error(f"Error generating files: {e}")
+            await context.bot.send_message(chat_id=chat_id, text=f"⚠️ Ошибка генерации файлов: {e}")
 
     async def _finalize_with_text(self, chat_id: int, raw_text: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         pending = self.pending_inputs.get(chat_id) or {}
@@ -219,71 +330,57 @@ class AstroBot:
             report_text, issues = await loop.run_in_executor(None, self.orchestrator.process_compatibility_report, client_data)
 
             if report_text:
-                await context.bot.send_message(chat_id=chat_id, text="🧩 Привожу структуру и разметку под DOCX/PDF...")
-
-                def layout_task():
-                    return self.orchestrator.layout_report_astromarkup(client_data, report_text, issues)
-
-                astromarkup_text = await loop.run_in_executor(None, layout_task)
-
-                await context.bot.send_message(chat_id=chat_id, text="🎨 Верстаю PDF отчет...")
-                pdf_filename = f"Analys_{chat_id}_{update.message.message_id}.pdf"
-
-                def generate_pdf_task():
-                    pdf_gen = PDFReportGenerator(pdf_filename)
-                    return pdf_gen.create_pdf(client_data, astromarkup_text)
-
-                final_pdf_path = await loop.run_in_executor(None, generate_pdf_task)
-
-                await context.bot.send_message(chat_id=chat_id, text="📝 Формирую DOCX версию...")
-                docx_filename = f"Analys_{chat_id}_{update.message.message_id}.docx"
-
-                def generate_docx_task():
-                    docx_gen = DOCXReportGenerator(docx_filename)
-                    return docx_gen.create_docx(client_data, astromarkup_text)
-
-                final_docx_path = await loop.run_in_executor(None, generate_docx_task)
-
-                await context.bot.send_message(chat_id=chat_id, text="✨ Готово! Отправляю файлы.")
-
-                await context.bot.send_document(
-                    chat_id=chat_id,
-                    document=open(final_pdf_path, 'rb'),
-                    filename=f"Совместимость_{name1}_{name2}.pdf",
-                )
-                await context.bot.send_document(
-                    chat_id=chat_id,
-                    document=open(final_docx_path, 'rb'),
-                    filename=f"Совместимость_{name1}_{name2}.docx",
-                )
-
+                # Сохраняем состояние для возможного редактирования пользователем
+                self.pending_inputs[chat_id]["last_report_text"] = report_text
+                self.pending_inputs[chat_id]["client_data"] = client_data
+                
+                # Показываем предупреждения, если были (до генерации файлов)
                 if issues:
                     parts = ["⚠️ Предупреждение: после проверки остались возможные неточности:"]
                     for item in issues:
                         bid = item.get("block_id")
-                        crit = item.get("critical_errors") or []
-                        minor = item.get("minor_errors") or []
                         fb = (item.get("feedback") or "").strip()
-                        line = f"Блок {bid}: критич.={len(crit)}, мелких={len(minor)}"
+                        line = f"Блок {bid}"
                         if fb:
-                            line += f". Совет: {fb[:200]}"
+                            line += f": {fb[:200]}"
                         parts.append(line)
                     await context.bot.send_message(chat_id=chat_id, text="\n".join(parts))
 
-                if os.path.exists(final_pdf_path):
-                    os.remove(final_pdf_path)
-                if os.path.exists(final_docx_path):
-                    os.remove(final_docx_path)
+                # Генерируем и отправляем файлы
+                await self._generate_and_send_files(chat_id, client_data, report_text, update, context)
 
-                # очищаем ожидание для этого чата
-                if chat_id in self.pending_inputs:
-                    del self.pending_inputs[chat_id]
             else:
                 await context.bot.send_message(chat_id=chat_id, text="⚠️ Произошла ошибка при генерации отчёта.")
 
         except Exception as e:
             logging.error(f"Error handling text: {e}")
             await context.bot.send_message(chat_id=chat_id, text=f"⚠️ Произошла внутренняя ошибка: {str(e)}")
+
+    async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка нажатий на инлайн-кнопки."""
+        query = update.callback_query
+        chat_id = update.effective_chat.id
+        await query.answer()
+
+        data = query.data
+        pending = self.pending_inputs.get(chat_id)
+
+        if not pending:
+             # Если бот перезагружался, состояния может не быть
+             await query.edit_message_text(text="⚠️ Данные устарели. Пожалуйста, начните заново, прислав фото.")
+             return
+
+        if data == "feedback_no":
+            # Пользователь доволен
+            if chat_id in self.pending_inputs:
+                del self.pending_inputs[chat_id]
+            
+            await query.edit_message_text(text="👌 Отлично! Рад, что вам понравилось. Жду следующие данные для нового разбора!")
+        
+        elif data == "feedback_yes":
+            # Пользователь хочет внести правки
+            pending["status"] = "WAITING_FOR_FEEDBACK_TEXT"
+            await query.edit_message_text(text="🔧 Напишите, что именно нужно исправить или добавить в отчет.\n(Можно скопировать кусок текста и написать: перепиши это так-то).")
 
 
 if __name__ == '__main__':
@@ -298,10 +395,12 @@ if __name__ == '__main__':
     start_handler = CommandHandler('start', astro_bot.start)
     photo_handler = MessageHandler(filters.PHOTO, astro_bot.handle_photo)
     text_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, astro_bot.handle_text)
+    callback_handler = CallbackQueryHandler(astro_bot.handle_callback)
     
     application.add_handler(start_handler)
     application.add_handler(photo_handler)
     application.add_handler(text_handler)
+    application.add_handler(callback_handler)
 
     application.add_error_handler(error_handler)
     
